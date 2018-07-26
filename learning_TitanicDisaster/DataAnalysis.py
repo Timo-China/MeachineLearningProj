@@ -18,6 +18,9 @@ print(data_train.describe())
 Survived_0 = data_train.Pclass[data_train.Survived == 0].value_counts()
 Survived_1 = data_train.Pclass[data_train.Survived == 1].value_counts()
 
+print(Survived_0)
+print(Survived_1)
+
 '''
 第一张图片
 '''
