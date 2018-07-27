@@ -15,6 +15,7 @@ from sklearn import linear_model
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import time
 
 
 
@@ -54,14 +55,15 @@ def SetCabinType(df):
 
 def PreprocessingData(data_train):
     data_train, rfr = SetMissingAge(data_train)
-    data_train = SetCabinType(data_train)
+    # Cabin缺失项太多，直接除去Cabin项后，精度进一步提升,得分为0.78468
+    # data_train = SetCabinType(data_train)
 
     # 转为onehot
-    dummies_Cabin = pd.get_dummies(data_train['Cabin'], prefix='Cabin')
+    # dummies_Cabin = pd.get_dummies(data_train['Cabin'], prefix='Cabin')
     dummies_Embarked = pd.get_dummies(data_train['Embarked'], prefix='Embarked')
     dummies_Sex = pd.get_dummies(data_train['Sex'], prefix='Sex')
     dummies_Pclass = pd.get_dummies(data_train['Pclass'], prefix='Pclass')
-    df = pd.concat([data_train, dummies_Cabin, dummies_Embarked, dummies_Sex, dummies_Pclass], axis=1)
+    df = pd.concat([data_train, dummies_Embarked, dummies_Sex, dummies_Pclass], axis=1)
     df.drop(['Pclass', 'Name', 'Sex', 'Ticket', 'Cabin', 'Embarked'], axis=1, inplace=True)
 
     scaler = preprocessing.StandardScaler()
@@ -153,14 +155,22 @@ def main():
     # savePredictResult(test_data, vot_predict, 'Data/result.csv')
 
     from sklearn.ensemble import BaggingRegressor
+    from sklearn.ensemble import BaggingClassifier
 
     clf = linear_model.LogisticRegression(C=1.0, penalty='l1', tol=1e-6)
-    bagging_clf = BaggingRegressor(vot_clf, n_estimators=20, max_samples=0.8, max_features=1.0, bootstrap=True,
+    # bagging_clf = BaggingRegressor(clf, n_estimators=20, max_samples=0.8, max_features=1.0, bootstrap=True,
+    #                                bootstrap_features=False, n_jobs=-1)
+
+    # 使用此参数分数可以提高到0.77990，使用svm算法做评估器比线性回归更加准确一点，下面可以进行调节SVM的参数
+    bagging_clf = BaggingClassifier(svc_clf, n_estimators=1000, max_samples=0.5, max_features=1.0, bootstrap=True,oob_score=True,
                                    bootstrap_features=False, n_jobs=-1)
+
     bagging_clf.fit(X, y)
+    print(bagging_clf.oob_score_)
     bagging_predict = bagging_clf.predict(test_x)
     bagging_predict = bagging_predict.astype(np.int)
-    savePredictResult(test_data, bagging_predict, 'Data/result.csv')
+    file_name = time.strftime('Data/Result_%Y_%m_%d_%H_%M_%S.csv', time.localtime())
+    savePredictResult(test_data, bagging_predict, file_name)
     print('finish save')
 
 
