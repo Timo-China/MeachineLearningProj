@@ -15,9 +15,20 @@ from sklearn import linear_model
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from sklearn.ensemble import BaggingRegressor
+from sklearn.ensemble import BaggingClassifier
+import re
 import time
 
-
+'''
+从名字中获取头衔，比如miss、 Mr、Master有时候也能象征不同人的身份地位
+'''
+def Get_Title(name):
+    title_search = re.search(' ([A-Za-z]+)\.', name)
+    # If the title exists, extract and return it.
+    if title_search:
+        return title_search.group(1)
+    return ""
 
 def SetMissingAge(df):
     # 把已有的数值型特征取出来丢进Random Forest Regressor中
@@ -54,24 +65,43 @@ def SetCabinType(df):
     return df
 
 def PreprocessingData(data_train):
+
+    # 从姓名中提取人的头衔
+    data_train['Title'] = data_train['Name'].apply(Get_Title)
+
+    data_train['Title'] = data_train['Title'].replace(['Lady', 'Countess', 'Capt', 'Col', 'Don',
+                                                 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer', 'Dona'], 'Rare')
+    data_train['Title'] = data_train['Title'].replace('Mlle', 'Miss')
+    data_train['Title'] = data_train['Title'].replace('Ms', 'Miss')
+    data_train['Title'] = data_train['Title'].replace('Mme', 'Mrs')
+
+    # 添加FamilySize
+    data_train['FamilySize'] = data_train['SibSp'] + data_train['Parch'] + 1
+
     data_train, rfr = SetMissingAge(data_train)
     # Cabin缺失项太多，直接除去Cabin项后，精度进一步提升,得分为0.78468
     # data_train = SetCabinType(data_train)
 
+    data_train['Age_bin'] = pd.cut(data_train['Age'], bins=[0, 12, 20, 40, 120], labels=['Children', 'Teenage', 'Adult', 'Elder'])
+    data_train['Fare_bin'] = pd.cut(data_train['Fare'], bins=[0, 7.91, 14.45, 31, 120], labels=['Low_fare', 'median_fare', 'Average_fare', 'high_fare'])
+
     # 转为onehot
     # dummies_Cabin = pd.get_dummies(data_train['Cabin'], prefix='Cabin')
+    dummies_age = pd.get_dummies(data_train['Title'], prefix='Age_bin')
+    dummies_fare = pd.get_dummies(data_train['Title'], prefix='Fare_bin')
+    dummies_title = pd.get_dummies(data_train['Title'], prefix='Title')
     dummies_Embarked = pd.get_dummies(data_train['Embarked'], prefix='Embarked')
     dummies_Sex = pd.get_dummies(data_train['Sex'], prefix='Sex')
     dummies_Pclass = pd.get_dummies(data_train['Pclass'], prefix='Pclass')
-    df = pd.concat([data_train, dummies_Embarked, dummies_Sex, dummies_Pclass], axis=1)
-    df.drop(['Pclass', 'Name', 'Sex', 'Ticket', 'Cabin', 'Embarked'], axis=1, inplace=True)
+    df = pd.concat([data_train, dummies_title, dummies_Embarked, dummies_Sex, dummies_Pclass, dummies_age, dummies_fare], axis=1)
+    df.drop(['Pclass', 'Name', 'Sex', 'Ticket', 'Cabin', 'Embarked', 'Age_bin', 'Fare_bin'], axis=1, inplace=True)
 
-    scaler = preprocessing.StandardScaler()
-
-    age_scale_param = scaler.fit(df['Age'].values.reshape(-1, 1))
-    df['Age_scaled'] = scaler.fit_transform(df['Age'].values.reshape(-1, 1), age_scale_param)
-    fare_scale_param = scaler.fit(df['Fare'].values.reshape(-1, 1))
-    df['Fare_scaled'] = scaler.fit_transform(df['Fare'].values.reshape(-1, 1), fare_scale_param)
+    # 将Age与Fare划分等级后，精度进一步提升
+    # scaler = preprocessing.StandardScaler()
+    # age_scale_param = scaler.fit(df['Age'].values.reshape(-1, 1))
+    # df['Age_scaled'] = scaler.fit_transform(df['Age'].values.reshape(-1, 1), age_scale_param)
+    # fare_scale_param = scaler.fit(df['Fare'].values.reshape(-1, 1))
+    # df['Fare_scaled'] = scaler.fit_transform(df['Fare'].values.reshape(-1, 1), fare_scale_param)
 
     # 用正则取出我们要的属性值
     train_df = df.filter(regex='Survived|Age_.*|SibSp|Parch|Fare_.*|Cabin_.*|Embarked_.*|Sex_.*|Pclass_.*')
@@ -104,7 +134,8 @@ def main():
 
     # predict test data
     test_data = pd.read_csv('Data/test.csv')
-    test_data.loc[(test_data.Fare.isnull()), 'Fare'] = 0
+    # test_data.loc[(test_data.Fare.isnull()), 'Fare'] = 0
+    test_data['Fare'].fillna(test_data['Fare'].median(), inplace=True)
 
     test_np = PreprocessingData(test_data)
     test_x = test_np
@@ -153,9 +184,6 @@ def main():
     # vot_predict = vot_clf.predict(test_x)
     # print('predict value:', vot_predict)
     # savePredictResult(test_data, vot_predict, 'Data/result.csv')
-
-    from sklearn.ensemble import BaggingRegressor
-    from sklearn.ensemble import BaggingClassifier
 
     clf = linear_model.LogisticRegression(C=1.0, penalty='l1', tol=1e-6)
     # bagging_clf = BaggingRegressor(clf, n_estimators=20, max_samples=0.8, max_features=1.0, bootstrap=True,
